@@ -1,38 +1,41 @@
 #!/bin/bash
-fasta_file=$1
+
+# Usage: search_glycine_patterns.sh input_file output_file
+# Searches for glycine patterns in FASTA input file and writes matching sequences to output file.
+
+input_file=$1
 output_file=$2
-tmp_file=$(mktemp)
 
-while read -r header; do
-  read -r sequence
+# Minimum glycine percentage to accept a sequence.
+min_glycine_pct=30
 
-  # Get the total number of G, A, and sequence length
-  g_count=$(grep -o "G" <<< "$sequence" | wc -l)
-  a_count=$(grep -o "A" <<< "$sequence" | wc -l)
-  length=${#sequence}
+# Minimum number of glycine patterns to accept a sequence.
+min_glycine_patterns=5
 
-  # Check if the percentage of G and A meet the requirement
-  g_percent=$(echo "scale=2; $g_count/$length * 100" | bc)
-  a_percent=$(echo "scale=2; $a_count/$length * 100" | bc)
-  if (( $(echo "$g_percent >= 30" | bc -l) )) && (( $(echo "$a_percent >= 10" | bc -l) )); then
-    # Use regex to match the two patterns
-    pattern_1='(G[GAT][A-Z])|(GG[GAT])'
-    pattern_2='(A[CGT][A-Z])|(AA[CGT])'
-    pattern="($pattern_1)|($pattern_2)"
+# Patterns to search for.
+patterns=('G[[:upper:]]''G[[:upper:]]{2}')
 
-    # Get all matches of the pattern in the sequence
-    matches=$(grep -Eo "$pattern" <<< "$sequence" | wc -l)
+# Loop over sequences in the input file.
+while read -r header; read -r sequence; do
+    # Count glycines in the sequence.
+    glycine_count=$(echo "$sequence" | grep -o 'G' | wc -l)
+    sequence_length=${#sequence}
 
-    # Check if the number of matching patterns meets the requirement
-    if (( "$matches" >= 5 )); then
-      echo "$header" >> "$tmp_file"
-      echo "$sequence" >> "$tmp_file"
+    # Compute glycine percentage.
+    glycine_pct=$(bc <<< "scale=2; $glycine_count / $sequence_length * 100")
+
+    # Skip sequences with insufficient glycines.
+    if (( $(bc <<< "$glycine_pct < $min_glycine_pct") )); then
+        continue
     fi
-  fi
-done < "$fasta_file"
 
-# Write the filtered sequences to the output file
-cat "$tmp_file" > "$output_file"
+    # Search for glycine patterns and count them.
+    glycine_patterns=$(echo "$sequence" | grep -o -f <(echo "${patterns[@]}" | tr ' ' '\n') | uniq -c | awk '{print $1}')
+    if (( $(bc <<< "$glycine_patterns < $min_glycine_patterns") )); then
+        continue
+    fi
 
-# Remove the temp file
-rm "$tmp_file"
+    # Write matching sequences to output file.
+    echo "$header" >> "$output_file"
+    echo "$sequence" >> "$output_file"
+done < "$input_file"
