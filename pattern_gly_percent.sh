@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Usage: search_glycine_patterns.sh input_file output_file
 # Searches for glycine patterns in FASTA input file and writes matching sequences to output file.
 
 input_file=$1
